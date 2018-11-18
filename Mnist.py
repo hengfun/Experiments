@@ -3,17 +3,15 @@ import numpy as np
 from torchvision import datasets, utils, transforms
 
 
-class DataWrapper(object):
+class MnistWrapper(object):
 
-    def __init__(self,task,batch_size,validation=0.05,seed=1):
+    def __init__(self,batch_size,shuffle=False,validation=0.05,seed=1):
         self.clock = 0
         self.batch_size = batch_size
-        if task == 'mnist':
+        if not shuffle:
             data, targets = get_mnist()
-        if task == 'shuffled-mnist':
-            data, targets = get_mnist(True,seed)
         else:
-            raise NotImplementedError()
+            data, targets = get_mnist(True,seed)
         
         self.valid_data = data[:int(data.shape[0]*validation)]
         self.valid_targets = targets[:int(data.shape[0]*validation)]
@@ -48,8 +46,8 @@ def get_mnist(shuffle=False,seed=None,dire='mnist'):
         labels.append(np.array(lab))
         out.append(im)
     
-    data = np.array(out).reshape(-1,28*28)
-    labels = np.array(labels)
+    data = np.array(out).reshape(-1,28*28,1).astype(np.float32)
+    labels = np.array(labels).astype(np.int32)
     if shuffle:
         rng = np.random.RandomState(seed)
         idx = np.arange(data.shape[1])
