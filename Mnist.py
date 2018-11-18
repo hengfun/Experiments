@@ -3,8 +3,6 @@ import numpy as np
 from torchvision import datasets, utils, transforms
 
 
-
-
 class DataWrapper(object):
 
     def __init__(self,task,batch_size,validation=0.05,seed=1):
@@ -34,8 +32,6 @@ class DataWrapper(object):
     
     def validate(self):
         return self.valid_data, self.valid_targets
-    
-
 
 def get_mnist(shuffle=False,seed=None,dire='mnist'):
     if not os.path.isdir(dire):

@@ -1,9 +1,5 @@
 import numpy as np 
 
-
-
-
-
 class SortingDataWrapper(object):
     def __init__(self,batch_size,num_elements,min_T,max_T,seed=1):
         self.rng = np.random.RandomState(seed)
@@ -11,7 +7,6 @@ class SortingDataWrapper(object):
         self.num_elements = num_elements
         self.clock = self.min_T = min_T
         self.max_T = max_T
-
 
     def next_batch(self):
         data = []
