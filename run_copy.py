@@ -11,7 +11,7 @@ parser.add_argument('--seed', type=int, default=0,
                  help='default seed 0')
 parser.add_argument('--num_seeds', type=int, default=10,
                  help='trains total number of seeds')
-parser.add_argument('--learning_rate', type=float, default=10e-4 ,
+parser.add_argument('--learning_rate', type=float, default=10e-5 ,
                  help='learning rate, default 10e-5')
 parser.add_argument('--optimizer', type=str, default='adam',
                  help='adam, or momentum')
@@ -29,7 +29,7 @@ parser.add_argument('--cycles', type=int, default=4,
                  help='num of cycles for MSD task')
 parser.add_argument('--layers', type=int, default=1,
                  help='layers')
-parser.add_argument('--hidden', type=int, default=50,
+parser.add_argument('--hidden', type=int, default=100,
                  help='hidden')
 parser.add_argument('--batch_size', type=int, default=1000,
                  help='batch_size')
@@ -147,7 +147,7 @@ for seed in range(seeds):
             e_loss+=b_loss
             e_acc+=b_acc/(t_end-t_start)
             #next batch
-            xb, yb = c.next_batch()
+            # xb, yb = c.next_batch()
         if e%50==0:
             print('Epoch:{} Loss:{:1.3f}, Acc:{:1.3f}'.format(e,e_loss,e_acc))
 
