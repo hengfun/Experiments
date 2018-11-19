@@ -1,156 +1,139 @@
-import tensorflow as tf
-import argparse
-from Sort import *
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--model', type=str, default='lstm',
-                 help='gru, gers, or lstm')
-parser.add_argument('--epochs', type=int, default=100000,
-                 help='# of Epochs, default 100k')
-parser.add_argument('--seed', type=int, default=0,
-                 help='default seed 0')
-parser.add_argument('--num_seeds', type=int, default=10,
-                 help='trains total number of seeds')
-parser.add_argument('--learning_rate', type=float, default=10e-5 ,
-                 help='learning rate, default 10e-5')
-parser.add_argument('--optimizer', type=str, default='adam',
-                 help='adam, or momentum')
-parser.add_argument('--data', type=str, default='nmsd',
-                 help='nmsd, or msd')
-parser.add_argument('--interval', type=int, default=999,
-                 help='train specific batch')
-parser.add_argument('--no_peep', action="store_false", default=True,
-                    help='train with peephole')
-parser.add_argument('--gpu', action="store_true", default=False,
-                    help='use gpu over cpu')
-parser.add_argument('--dtype', type=int, default=32,
-                 help='specify dtype')
-parser.add_argument('--cycles', type=int, default=4,
-                 help='num of cycles for MSD task')
-parser.add_argument('--layers', type=int, default=3,
-                 help='layers')
-parser.add_argument('--hidden', type=int, default=100,
-                 help='hidden')
-parser.add_argument('--batch_size', type=int, default=1,
-                 help='batch_size')
+import numpy as np 
+import tensorflow as tf 
 
-args = parser.parse_args()
+from Sort import SortingDataWrapper
 
-batch_size = args.batch_size
 
-c = SortingDataWrapper(batch_size,4,15)
-xb,yb= c.next_batch()
+n_steps = 10000
 
-class Model(object):
-    def __init__(self, args):
-        self.rate = args.learning_rate
+
+logdir = './logs/sort/{0}_{1}_{2}'
+
+
+class Config(object):
+    def __init__(self):
+        self.learning_rate = 1e-3
+        self.seed = 1
+        self.optimizer = 'adam'
+        self.hidden_units = 100
+        self.dtype = 'float32'
+        self.model = 'lstm'
+        self.validate_freq = 100
+        self.batch_size = 100
+        self.min_t = 2
+        self.max_t = 15
+
+
+# gpu = args.gpu
+gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.2)
+
+
+
+
+
+class SortModel(object):
+    def __init__(self,args):
         self.seed = args.seed
         self.optim = args.optimizer
-        self.epochs = args.epochs
-        self.hidden = args.hidden
-        self.layers = args.layers
-        self.num_classes =
-        self.batch_size = args.batch_size
-        self.global_step = tf.Variable(0, name='global_step', trainable=False)
+        self.min_T = args.min_t
+        self.max_T = args.max_t
 
-        if args.dtype == 32:
-            self.dtype = tf.float32
-        else:
+        self.hidden_units = args.hidden_units
+        
+        self.num_classes = 10
+        if args.dtype == tf.float64:
             self.dtype = tf.float64
-        print('Using dtype tf.float{}'.format(self.dtype))
-
-        if self.layers ==1:
-            if args.model == 'lstm':
-                self.cell = tf.contrib.rnn.LSTMCell(num_units=self.hidden, dtype=self.dtype)
-            else:
-                self.cell = tf.contrib.rnn.GRUCell(num_units=self.hidden, dtype=self.dtype)
-
         else:
-            if args.model == 'lstm':
-                self.cell = tf.contrib.rnn.MultiRNNCell([tf.contrib.rnn.LSTMCell(num_units=self.hidden, dtype=self.dtype)
-                                                         for _ in range(self.layers)])
-            else:
-                self.cell = tf.contrib.rnn.MultiRNNCell([tf.contrib.rnn.GRUCell(num_units=self.hidden, dtype=self.dtype)
-                                                         for _ in range(self.layers)])
-        self.x = tf.placeholder(dtype=tf.int32, shape=[None, None])
-        batch_size = tf.shape(self.x)[0]
-        max_steps = tf.shape(self.x)[1]
+            self.dtype = tf.float32
+        
+        if args.model == 'lstm':
+            self.cell = tf.contrib.rnn.LSTMCell(num_units=self.hidden_units)
+            # self.cell = tf.contrib.cudnn_rnn.CudnnLSTM(num_layers=1,num_units=self.hidden_units)
+        elif args.model == 'gru':
+            self.cell = tf.contrib.rnn.GRUCell(num_units=self.hidden_units)
+        
+        self.X = tf.placeholder(dtype=self.dtype,shape=[None,None,2])
+        self.batch_size = tf.shape(self.X)[0]
+        self.sequence_length = tf.shape(self.X)[1]
+        self.mask_output = tf.placeholder(dtype=self.dtype,shape=[None,None])
 
+        self.cur_T = tf.placeholder(dtype=tf.int32)
 
-        self.y = tf.placeholder(dtype=tf.int32, shape=[None, None])
-        self.yo = tf.one_hot(self.y, self.num_classes)
-        self.lr = tf.placeholder(dtype=self.dtype, name="learning_rate")
-        #mask
-        self.mask = tf.cast(tf.tile(tf.reshape(tf.math.logical_not(tf.sequence_mask([max_steps-10],max_steps)),
-                                               [1,max_steps]),[batch_size,1]),dtype=self.dtype)
+        self.Y = tf.placeholder(dtype=tf.int32,shape=[None,None])
+        self.Y_onehot = tf.one_hot(self.Y,self.max_T)
 
-        self.initial_state = self.cell.zero_state(batch_size=batch_size, dtype=self.dtype)
+        self.initial_state = self.cell.zero_state(batch_size=self.batch_size,dtype=self.dtype)
+        
+        self.output, last_state = tf.nn.dynamic_rnn(inputs=self.X,cell=self.cell,dtype=self.dtype)
 
-        output, last_state = tf.nn.dynamic_rnn(inputs=self.xo, cell=self.cell, dtype=self.dtype)
+        self.output_flat = tf.reshape(self.output, [-1,self.hidden_units])
 
-        output_flatten = tf.reshape(output,[-1,self.hidden])
-        predict = tf.layers.dense(output_flatten,units=self.num_classes)
-        self.logits = tf.reshape(predict,[batch_size,max_steps,self.num_classes])
-        self.softmax_output = tf.nn.softmax(self.logits,axis=2)
-        self.predict = tf.argmax(self.softmax_output,axis=2)
+        self.logits = tf.layers.dense(self.output_flat,self.max_T,name='final_dense')
 
-        self.logits_predict = tf.slice(self.logits,[0,max_steps - 10,0],[-1,-1,-1])
+        #self.prediction = tf.reshape(tf.cast(tf.argmax(self.logits,axis=2),tf.int32),[self.batch_size,-1])
+        #self.accuracy = tf.reduce_sum(tf.cast(tf.equal(self.Y,self.prediction),tf.float32)) / self.batch_size
+        #self.accuracy = tf.reduce_sum(tf.cast(tf.equal(self.Y,self.prediction),tf.int32)) / (self.batch_size*self.sequence_length)
 
-        self.predictions = tf.argmax(self.logits_predict,axis=1)
+        #self.Y_oh_flat = tf.reshape()
+        self.loss_ = tf.nn.softmax_cross_entropy_with_logits(labels=tf.reshape(self.Y_onehot,[-1,self.max_T]),logits=self.logits)
+        self.loss = self.loss_ * tf.reshape(self.mask_output,[-1])
 
-        self.labels = tf.slice(self.yo, [0, max_steps - 10, 0], [-1, -1, -1])
-        self.labels_predict = tf.argmax(self.labels,axis=1)
+        self.loss_batch = tf.reduce_mean(self.loss)
 
-        self.all_acc = tf.reduce_mean(tf.cast(tf.math.equal(self.labels_predict,self.predictions),tf.float32),axis=1)
-        self.batch_acc = tf.reduce_mean(self.all_acc)
-
-        self.cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.labels,logits=self.logits_predict)
-
-        self.loss = tf.reduce_mean(tf.reduce_mean(self.cross_entropy_loss,axis=1),axis=0)
-        self.optimizer = tf.train.AdamOptimizer(self.lr)
-        self.grads_vars = self.optimizer.compute_gradients(self.loss)
-        self.train_op = self.optimizer.apply_gradients(self.grads_vars,
-                                                           global_step=self.global_step)
-    def step(self,sess,feed_dict):
-        return sess.run([self.train_op,self.loss,self.global_step,self.batch_acc],feed_dict)
+        if self.optim=='adam':
+            self.optim = tf.train.AdamOptimizer(args.learning_rate)
+        else:
+            self.optim = tf.train.MomentumOptimizer(args.learning_rate,momentum=.99)
+        self.train_step = self.optim.minimize(self.loss)
 
 
 
+print('building model..')
 
-gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.2)
-tf.ConfigProto(gpu_options=gpu_options)
 
-# device = '/cpu:0'
+args = Config()
+tf.set_random_seed(args.seed)
+model = SortModel(args)
 
-# lr = args.learning_rate
-# seeds = 10
-# t_start = 10
-# t_end = 20
-# c = CopyTask(batch_size,t_start,t_end)
-# xb,yb= c.next_batch()
-# for seed in range(seeds):
-#     # set seed
-#     tf.reset_default_graph()
-#     tf.set_random_seed(seed)
-#
-#     model = Model(args)
-#     sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
-#     init = tf.global_variables_initializer()
-#     sess.run(init)
-#     print('Setting seed....')
-#     for e in range(args.epochs):
-#         e_loss = 0
-#         e_acc = 0
-#         for b in range(0,t_end-t_start+1):
-#             # print(b)
-#             feed_dict = {model.x: xb, model.y: yb, model.lr:lr}
-#             _, b_loss,step,b_acc=model.step(sess,feed_dict)
-#             e_loss+=b_loss/(t_end-t_start)
-#             e_acc+=b_acc/(t_end-t_start)
-#             #next batch
-#             xb, yb = c.next_batch()
-#         if e%50==0:
-#             print('Epoch:{} Loss:{:1.3f}, Acc:{:1.3f}'.format(e,e_loss,e_acc))
-#
-#
-#     sess.close()
+
+print('getting data..')
+
+data = SortingDataWrapper(args.batch_size,args.min_t,args.max_t)
+
+
+
+
+print('begin training for {0} steps'.format(n_steps))
+
+sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
+sess.run(tf.initializers.global_variables())
+
+writer = tf.summary.FileWriter(logdir.format(args.model,args.learning_rate,args.seed), sess.graph)
+train_error_summary = tf.summary.scalar(name='Train_Error',tensor=model.loss_batch)
+#valid_accuracy_summary = tf.summary.scalar(name='Accuracy',tensor=model.accuracy)
+
+
+for step in range(n_steps):
+    tx,ty,m = data.next_batch()
+    _, e, summ = sess.run([model.train_step,model.loss_batch,train_error_summary],{model.X:tx,model.Y:ty,model.mask_output:m})
+    writer.add_summary(summ,step)
+
+    if step % args.validate_freq == 0:
+        #writer.add_summary(esumm,step)
+        #writer.add_summary(asumm,step)
+        print('step {0} :: {1}'.format(step,e))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
