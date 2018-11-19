@@ -7,7 +7,6 @@ class SortingDataWrapper(object):
     def __init__(self,batch_size,min_T,max_T,seed=1):
         self.rng = np.random.RandomState(seed)
         self.batch_size = batch_size
-        self.num_elements = num_elements
         self.clock = self.min_T = min_T
         self.max_T = max_T
 
@@ -15,7 +14,7 @@ class SortingDataWrapper(object):
         data = []
         targets = []
         for i in range(self.batch_size):
-            x,y = self.generate(self.num_elements,self.clock)
+            x,y = self.generate(self.clock)
             data.append(x)
             targets.append(y)
         self.clock += 1
