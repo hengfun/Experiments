@@ -6,10 +6,10 @@ from Mnist import MnistWrapper
 
 
 
-n_steps = 1
+n_steps = 10000
 
 
-logdir = './logs/1/train '
+logdir = './logs/mnist/{0}_{1}_{2}'
 
 
 class Config(object):
@@ -20,10 +20,12 @@ class Config(object):
         self.hidden_units = 100
         self.dtype = 'float32'
         self.model = 'lstm'
-        self.validate_freq = 1
+        self.validate_freq = 100
+        self.batch_size = 100
 
 
-        
+# gpu = args.gpu
+gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.2)
 
 
 
@@ -45,6 +47,7 @@ class MNISTModel(object):
         
         if args.model == 'lstm':
             self.cell = tf.contrib.rnn.LSTMCell(num_units=self.hidden_units)
+            # self.cell = tf.contrib.cudnn_rnn.CudnnLSTM(num_layers=1,num_units=self.hidden_units)
         elif args.model == 'gru':
             self.cell = tf.contrib.rnn.GRUCell(num_units=self.hidden_units)
         
@@ -71,8 +74,8 @@ class MNISTModel(object):
         self.accuracy = tf.reduce_sum(tf.cast(tf.equal(self.Y,self.prediction),tf.int32)) / self.batch_size
 
 
-        self.loss = tf.nn.softmax_cross_entropy_with_logits(labels=self.Y_onehot,logits=self.logits)
-        self.loss_batch = tf.reduce_sum(self.loss)
+        self.loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.Y_onehot,logits=self.logits)
+        self.loss_batch = tf.reduce_mean(self.loss)
 
         if self.optim=='adam':
             self.optim = tf.train.AdamOptimizer(args.learning_rate)
@@ -86,22 +89,23 @@ print('building model..')
 
 
 args = Config()
+tf.set_random_seed(args.seed)
 model = MNISTModel(args)
 
 
 print('getting data..')
 
-data = MnistWrapper(batch_size=4)
+data = MnistWrapper(batch_size=args.batch_size)
 
 
 
 
 print('begin training for {0} steps'.format(n_steps))
 
-sess = tf.InteractiveSession()
+sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.initializers.global_variables())
 
-writer = tf.summary.FileWriter(logdir, sess.graph)
+writer = tf.summary.FileWriter(logdir.format(args.model,args.learning_rate,args.seed), sess.graph)
 train_error_summary = tf.summary.scalar(name='Train_Error',tensor=model.loss_batch)
 valid_error_summary = tf.summary.scalar(name='Validation_Error',tensor=model.loss_batch)
 valid_accuracy_summary = tf.summary.scalar(name='Validation_Accuracy',tensor=model.accuracy)
@@ -117,6 +121,7 @@ for step in range(n_steps):
         ve, vacc, esumm,asumm = sess.run([model.loss_batch,model.accuracy,valid_error_summary,valid_accuracy_summary],{model.X:vx,model.Y:vy})
         writer.add_summary(esumm,step)
         writer.add_summary(asumm,step)
+        print(ve,vacc)
 
 
 

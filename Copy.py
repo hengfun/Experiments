@@ -55,5 +55,5 @@ class CopyTask(object):
         self.counter += 1
         self.counter = max(self.counter % (self.t_end + 1), self.t_start)
         t = self.counter % (self.t_end + 1)
-        print(self.counter)
+        # print(self.counter)
         return self.generate_batch(self.n, t)
