@@ -21,8 +21,8 @@ class Config(object):
         self.dtype = 'float32'
         self.model = 'lstm'
         self.validate_freq = 200
-        self.batch_size = 32
-        self.clip_grad_norm = True
+        self.batch_size = 50
+        self.clip_grad_norm = False
         if self.clip_grad_norm:
             self.max_norm_grad = 5.0
         else:
@@ -92,7 +92,7 @@ class MNISTModel(object):
             grads_clipped, _ = tf.clip_by_global_norm(grads, clip_norm=self.max_norm_gradient)
             self.train_op = self.optim.apply_gradients(zip(grads_clipped, variables))
         else:
-            self.train_op = self.optimizer.apply_gradients(self.grads_vars)
+            self.train_op = self.optim.apply_gradients(self.grads_vars)
         self.train_step = self.optim.minimize(self.loss)
 
 
