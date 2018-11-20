@@ -20,8 +20,8 @@ class Config(object):
         self.hidden_units = 100
         self.dtype = 'float32'
         self.model = 'lstm'
-        self.validate_freq = 100
-        self.batch_size = 100
+        self.validate_freq = 200
+        self.batch_size = 32
 
 
 # gpu = args.gpu
@@ -107,21 +107,23 @@ sess.run(tf.initializers.global_variables())
 
 writer = tf.summary.FileWriter(logdir.format(args.model,args.learning_rate,args.seed), sess.graph)
 train_error_summary = tf.summary.scalar(name='Train_Error',tensor=model.loss_batch)
+train_accuracy_summary = tf.summary.scalar(name='train_Accuracy',tensor=model.accuracy)
 valid_error_summary = tf.summary.scalar(name='Validation_Error',tensor=model.loss_batch)
 valid_accuracy_summary = tf.summary.scalar(name='Validation_Accuracy',tensor=model.accuracy)
 
 
 for step in range(n_steps):
     tx,ty = data.next_batch()
-    _, e, summ = sess.run([model.train_step,model.loss_batch,train_error_summary],{model.X:tx,model.Y:ty})
+    _, e,a, summ,asumm = sess.run([model.train_step,model.loss_batch,model.accuracy,train_error_summary,train_accuracy_summary],{model.X:tx,model.Y:ty})
     writer.add_summary(summ,step)
+    writer.add_summary(asumm,step)
 
     if step % args.validate_freq == 0:
         vx, vy = data.validate()
         ve, vacc, esumm,asumm = sess.run([model.loss_batch,model.accuracy,valid_error_summary,valid_accuracy_summary],{model.X:vx,model.Y:vy})
         writer.add_summary(esumm,step)
         writer.add_summary(asumm,step)
-        print(ve,vacc)
+        print('step {0} | e {1} a {2} | e {3} a {4}'.format(step,round(e,4),round(a,3),round(ve,4),round(vacc,3)))
 
 
 
