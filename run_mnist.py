@@ -9,7 +9,7 @@ from Mnist import MnistWrapper
 n_steps = 10000
 
 
-logdir = './logs/mnist/{0}_{1}_{2}'
+logdir = './logs/mnist/{0}_{1}_{2}_clip{3}'
 
 
 class Config(object):
@@ -22,6 +22,11 @@ class Config(object):
         self.model = 'lstm'
         self.validate_freq = 200
         self.batch_size = 32
+        self.clip_grad_norm = True
+        if self.clip_grad_norm:
+            self.max_norm_grad = 5.0
+        else:
+            self.max_norm_grad = None
 
 
 # gpu = args.gpu
@@ -36,7 +41,7 @@ class MNISTModel(object):
         self.rate = args.learning_rate
         self.seed = args.seed
         self.optim = args.optimizer
-
+        self.max_norm_gradient = args.max_norm_grad
         self.hidden_units = args.hidden_units
         
         self.num_classes = 10
@@ -51,7 +56,7 @@ class MNISTModel(object):
         elif args.model == 'gru':
             self.cell = tf.contrib.rnn.GRUCell(num_units=self.hidden_units)
         
-        self.X = tf.placeholder(dtype=self.dtype,shape=[None,None,1])
+        self.X = tf.placeholder(dtype=self.dtype,shape=[None,28*28,1])
         self.batch_size = tf.shape(self.X)[0]
         self.mask = self.x_flat = tf.reshape(self.X,[-1])
 
@@ -64,7 +69,7 @@ class MNISTModel(object):
 
         self.initial_state = self.cell.zero_state(batch_size=self.batch_size,dtype=self.dtype)
         
-        output, last_state = tf.nn.dynamic_rnn(inputs=self.X,cell=self.cell,dtype=self.dtype)
+        output, last_state = tf.nn.dynamic_rnn(self.cell,self.X,dtype=self.dtype)
         self.last_hidden = output[:,-1,:]
 
         self.logits = tf.layers.dense(self.last_hidden,self.num_classes,name='final_dense')
@@ -80,7 +85,14 @@ class MNISTModel(object):
         if self.optim=='adam':
             self.optim = tf.train.AdamOptimizer(args.learning_rate)
         else:
-            self.optim = tf.train.MomentumOptimizer(args.learning_rate,momentum=.99)
+           self.optim = tf.train.MomentumOptimizer(args.learning_rate,momentum=.99)
+        self.grads_vars =self.optim.compute_gradients(self.loss)
+        if args.clip_grad_norm:
+            grads, variables = zip(*self.grads_vars)
+            grads_clipped, _ = tf.clip_by_global_norm(grads, clip_norm=self.max_norm_gradient)
+            self.train_op = self.optim.apply_gradients(zip(grads_clipped, variables))
+        else:
+            self.train_op = self.optimizer.apply_gradients(self.grads_vars)
         self.train_step = self.optim.minimize(self.loss)
 
 
@@ -105,7 +117,7 @@ print('begin training for {0} steps'.format(n_steps))
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.initializers.global_variables())
 
-writer = tf.summary.FileWriter(logdir.format(args.model,args.learning_rate,args.seed), sess.graph)
+writer = tf.summary.FileWriter(logdir.format(args.model,args.learning_rate,args.seed,args.max_norm_grad), sess.graph)
 train_error_summary = tf.summary.scalar(name='Train_Error',tensor=model.loss_batch)
 train_accuracy_summary = tf.summary.scalar(name='train_Accuracy',tensor=model.accuracy)
 valid_error_summary = tf.summary.scalar(name='Validation_Error',tensor=model.loss_batch)
@@ -124,15 +136,6 @@ for step in range(n_steps):
         writer.add_summary(esumm,step)
         writer.add_summary(asumm,step)
         print('step {0} | e {1} a {2} | e {3} a {4}'.format(step,round(e,4),round(a,3),round(ve,4),round(vacc,3)))
-
-
-
-
-
-
-
-
-
 
 
 
