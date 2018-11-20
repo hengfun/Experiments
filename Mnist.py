@@ -25,7 +25,7 @@ class MnistWrapper(object):
     def next_batch(self):
         x = self.train_data[self.clock*self.batch_size: self.clock*self.batch_size+self.batch_size]
         y = self.train_targets[self.clock*self.batch_size: self.clock*self.batch_size+self.batch_size]
-        self.clock = (self.clock + 1) % self.train_size
+        self.clock = (self.clock + 1) % (self.train_size//self.batch_size)
         return x, y 
     
     def validate(self):
