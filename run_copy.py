@@ -97,20 +97,23 @@ class Model(object):
 
         self.logits_predict = tf.slice(self.logits,[0,max_steps - 10,0],[-1,-1,-1])
 
-        self.predictions = tf.argmax(self.logits_predict,axis=1)
+        self.predictions = tf.cast(tf.argmax(self.logits_predict,axis=1),tf.int32)
 
-        self.labels = tf.slice(self.yo, [0, max_steps - 10, 0], [-1, -1, -1])
-        self.labels_predict = tf.argmax(self.labels,axis=1)
+        self.labels = tf.slice(self.y, [0, max_steps - 10], [-1, -1])
+        self.check = tf.slice(self.yo,[0,max_steps - 10,0],[-1,-1,-1])
 
-        self.all_acc = tf.reduce_mean(tf.cast(tf.math.equal(self.labels_predict,self.predictions),tf.float32),axis=1)
-        self.batch_acc = tf.reduce_mean(self.all_acc)
 
-        self.cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.labels,logits=self.logits_predict)
-        self.loss = tf.reduce_mean(tf.reduce_mean(self.cross_entropy_loss,axis=1),axis=0)
-        self.optimizer = tf.train.AdamOptimizer(self.lr)
-        self.grads_vars = self.optimizer.compute_gradients(self.loss)
-        self.train_op = self.optimizer.apply_gradients(self.grads_vars,
-                                                           global_step=self.global_step)
+        #
+        #
+        # self.all_acc = tf.reduce_mean(tf.cast(tf.math.equal(self.labels,self.predictions),tf.float32),axis=1)
+        # self.batch_acc = tf.reduce_mean(self.all_acc)
+        #
+        # self.cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.labels,logits=self.logits_predict)
+        # self.loss = tf.reduce_mean(tf.reduce_mean(self.cross_entropy_loss,axis=1),axis=0)
+        # self.optimizer = tf.train.AdamOptimizer(self.lr)
+        # self.grads_vars = self.optimizer.compute_gradients(self.loss)
+        # self.train_op = self.optimizer.apply_gradients(self.grads_vars,
+        #                                                    global_step=self.global_step)
     def step(self,sess,feed_dict):
         return sess.run([self.train_op,self.loss,self.global_step,self.batch_acc],feed_dict)
 
@@ -121,35 +124,45 @@ gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.2)
 tf.ConfigProto(gpu_options=gpu_options)
 
 # device = '/cpu:0'
-
-lr = args.learning_rate
-seeds = 10
 t_start = 10
 t_end = 20
+lr = args.learning_rate
 c = CopyTask(batch_size,t_start,t_end)
-for seed in range(seeds):
-    # set seed
-    tf.reset_default_graph()
-    tf.set_random_seed(seed)
+model = Model(args)
+sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+init = tf.global_variables_initializer()
+sess.run(init)
 
-    model = Model(args)
-    sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
-    init = tf.global_variables_initializer()
-    sess.run(init)
-    print('Setting seed....')
-    for e in range(args.epochs):
-        e_loss = 0
-        e_acc = 0
-        for b in range(0,t_end-t_start+1):
-            # print(b)
-            feed_dict = {model.x: xb, model.y: yb, model.lr:lr}
-            _, b_loss,step,b_acc=model.step(sess,feed_dict)
-            e_loss+=b_loss
-            e_acc+=b_acc/(t_end-t_start)
-            #next batch
-            # xb, yb = c.next_batch()
-        if e%50==0:
-            print('Epoch:{} Loss:{:1.3f}, Acc:{:1.3f}'.format(e,e_loss,e_acc))
+feed_dict = {model.x: xb, model.y: yb, model.lr:lr}
 
-
-    sess.close()
+#
+# seeds = 10
+# t_start = 10
+# t_end = 20
+# c = CopyTask(batch_size,t_start,t_end)
+# for seed in range(seeds):
+#     # set seed
+#     tf.reset_default_graph()
+#     tf.set_random_seed(seed)
+#
+#     model = Model(args)
+#     sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+#     init = tf.global_variables_initializer()
+#     sess.run(init)
+#     print('Setting seed....')
+#     for e in range(args.epochs):
+#         e_loss = 0
+#         e_acc = 0
+#         for b in range(0,t_end-t_start+1):
+#             # print(b)
+#             feed_dict = {model.x: xb, model.y: yb, model.lr:lr}
+#             _, b_loss,step,b_acc=model.step(sess,feed_dict)
+#             e_loss+=b_loss
+#             e_acc+=b_acc/(t_end-t_start)
+#             #next batch
+#             # xb, yb = c.next_batch()
+#         if e%50==0:
+#             print('Epoch:{} Loss:{:1.3f}, Acc:{:1.3f}'.format(e,e_loss,e_acc))
+#
+#
+#     sess.close()
