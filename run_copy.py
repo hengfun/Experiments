@@ -31,16 +31,12 @@ parser.add_argument('--layers', type=int, default=1,
                  help='layers')
 parser.add_argument('--hidden', type=int, default=100,
                  help='hidden')
-parser.add_argument('--batch_size', type=int, default=1000,
+parser.add_argument('--batch_size', type=int, default=5000,
                  help='batch_size')
 
 args = parser.parse_args()
 
 batch_size = args.batch_size
-c = CopyTask(batch_size,10,20)
-xb,yb= c.next_batch()
-
-import tensorflow as tf
 
 
 class Model(object):
@@ -97,26 +93,35 @@ class Model(object):
 
         self.logits_predict = tf.slice(self.logits,[0,max_steps - 10,0],[-1,-1,-1])
 
-        self.predictions = tf.cast(tf.argmax(self.logits_predict,axis=1),tf.int32)
+        self.predictions = tf.cast(tf.argmax(self.logits_predict,axis=2),tf.int32)
 
         self.labels = tf.slice(self.y, [0, max_steps - 10], [-1, -1])
-        self.check = tf.slice(self.yo,[0,max_steps - 10,0],[-1,-1,-1])
+        self.labels_predict = tf.slice(self.yo,[0,max_steps - 10,0],[-1,-1,-1])
 
 
-        #
-        #
-        # self.all_acc = tf.reduce_mean(tf.cast(tf.math.equal(self.labels,self.predictions),tf.float32),axis=1)
-        # self.batch_acc = tf.reduce_mean(self.all_acc)
-        #
-        # self.cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.labels,logits=self.logits_predict)
-        # self.loss = tf.reduce_mean(tf.reduce_mean(self.cross_entropy_loss,axis=1),axis=0)
-        # self.optimizer = tf.train.AdamOptimizer(self.lr)
-        # self.grads_vars = self.optimizer.compute_gradients(self.loss)
-        # self.train_op = self.optimizer.apply_gradients(self.grads_vars,
-        #                                                    global_step=self.global_step)
+        self.all_acc = tf.reduce_mean(tf.cast(tf.math.equal(self.labels,self.predictions),tf.float32),axis=1)
+        self.batch_acc = tf.reduce_mean(self.all_acc)
+
+        self.cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.labels_predict,logits=self.logits_predict)
+        self.loss = tf.reduce_mean(tf.reduce_mean(self.cross_entropy_loss,axis=1),axis=0)
+        self.optimizer = tf.train.AdamOptimizer(self.lr)
+        self.grads_vars = self.optimizer.compute_gradients(self.loss)
+        self.train_op = self.optimizer.apply_gradients(self.grads_vars,global_step=self.global_step)
+                 
+        ## summaries
+        self.t_error=tf.summary.scalar(name='Train_Error',tensor=self.loss)
+        self.t_acc = tf.summary.scalar(name='Train_Accuracy',tensor=self.batch_acc)
+
+        self.v_error = tf.summary.scalar(name='Validation_Error', tensor=self.loss)
+        self.v_acc = tf.summary.scalar(name='Validation_Accuracy', tensor=self.batch_acc)
+                 
+                 
+
     def step(self,sess,feed_dict):
-        return sess.run([self.train_op,self.loss,self.global_step,self.batch_acc],feed_dict)
+        return sess.run([self.train_op,self.loss,self.global_step,self.batch_acc,self.t_error,self.t_acc],feed_dict)
 
+    def check(self,sess,feed_dict):
+        return sess.run([self.labels,self.predictions,self.v_error,self.v_acc],feed_dict)
 
 
 
@@ -128,41 +133,51 @@ t_start = 10
 t_end = 20
 lr = args.learning_rate
 c = CopyTask(batch_size,t_start,t_end)
-model = Model(args)
-sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
-init = tf.global_variables_initializer()
-sess.run(init)
+# model = Model(args)
+# sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+# init = tf.global_variables_initializer()
+# sess.run(init)
+#
+# feed_dict = {model.x: xb, model.y: yb, model.lr:lr}
 
-feed_dict = {model.x: xb, model.y: yb, model.lr:lr}
 
-#
-# seeds = 10
-# t_start = 10
-# t_end = 20
-# c = CopyTask(batch_size,t_start,t_end)
-# for seed in range(seeds):
-#     # set seed
-#     tf.reset_default_graph()
-#     tf.set_random_seed(seed)
-#
-#     model = Model(args)
-#     sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
-#     init = tf.global_variables_initializer()
-#     sess.run(init)
-#     print('Setting seed....')
-#     for e in range(args.epochs):
-#         e_loss = 0
-#         e_acc = 0
-#         for b in range(0,t_end-t_start+1):
-#             # print(b)
-#             feed_dict = {model.x: xb, model.y: yb, model.lr:lr}
-#             _, b_loss,step,b_acc=model.step(sess,feed_dict)
-#             e_loss+=b_loss
-#             e_acc+=b_acc/(t_end-t_start)
-#             #next batch
-#             # xb, yb = c.next_batch()
-#         if e%50==0:
-#             print('Epoch:{} Loss:{:1.3f}, Acc:{:1.3f}'.format(e,e_loss,e_acc))
-#
-#
-#     sess.close()
+seeds = 10
+t_start = 10
+t_end = 20
+c = CopyTask(batch_size,t_start,t_end)
+xb, yb = c.next_batch()
+for seed in range(seeds):
+    # set seed
+    tf.reset_default_graph()
+    tf.set_random_seed(seed)
+
+    model = Model(args)
+    logdir = './logs/copy/{0}_{1}_{2}'
+
+    sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+    init = tf.global_variables_initializer()
+
+    writer = tf.summary.FileWriter(logdir.format(args.model, args.learning_rate, seed),
+                                   sess.graph)
+
+    sess.run(init)
+    print('Setting seed....')
+    for e in range(args.epochs):
+
+        feed_dict = {model.x: xb, model.y: yb, model.lr:lr}
+        _, e_loss,step,e_acc,esumm,asumm=model.step(sess,feed_dict)
+        writer.add_summary(esumm, step)
+        writer.add_summary(asumm, step)
+        xb, yb = c.next_batch()
+        #next batch
+        if e%200==0:
+            y_act,y_pred,esumm,asumm = model.check(sess,feed_dict)
+            writer.add_summary(esumm, step)
+            writer.add_summary(asumm, step)
+            print('act:{}'.format(y_act[0]))
+            print('pred:{}'.format(y_pred[0]))
+            print('Epoch:{} Loss:{:1.3f}, Acc:{:1.3f}'.format(e,e_loss,e_acc))
+
+
+
+    sess.close()
