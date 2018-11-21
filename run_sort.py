@@ -13,14 +13,14 @@ logdir = './logs/sort/{0}_{1}_{2}'
 
 class Config(object):
     def __init__(self):
-        self.learning_rate = 1e-3
+        self.learning_rate = 2e-3
         self.seed = 1
         self.optimizer = 'adam'
         self.hidden_units = 100
         self.dtype = 'float32'
         self.model = 'lstm'
         self.validate_freq = 100
-        self.batch_size = 100
+        self.batch_size = 20 #100
         self.min_t = 2
         self.max_t = 15
 
@@ -74,9 +74,11 @@ class SortModel(object):
         #self.prediction = tf.reshape(tf.cast(tf.argmax(self.logits,axis=2),tf.int32),[self.batch_size,-1])
         #self.accuracy = tf.reduce_sum(tf.cast(tf.equal(self.Y,self.prediction),tf.float32)) / self.batch_size
         #self.accuracy = tf.reduce_sum(tf.cast(tf.equal(self.Y,self.prediction),tf.int32)) / (self.batch_size*self.sequence_length)
+        self.prediction = tf.cast(tf.argmax(tf.reshape(self.logits,[self.batch_size,-1,self.max_T]),axis=2),tf.int32)
+        self.accuracy = tf.reduce_mean(tf.cast(tf.cast(tf.equal(self.Y[:,self.sequence_length//2:],self.prediction[:,self.sequence_length//2:]),tf.int32),tf.float32))
 
         #self.Y_oh_flat = tf.reshape()
-        self.loss_ = tf.nn.softmax_cross_entropy_with_logits(labels=tf.reshape(self.Y_onehot,[-1,self.max_T]),logits=self.logits)
+        self.loss_ = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.reshape(self.Y_onehot,[-1,self.max_T]),logits=self.logits)
         self.loss = self.loss_ * tf.reshape(self.mask_output,[-1])
 
         self.loss_batch = tf.reduce_mean(self.loss)
@@ -113,6 +115,10 @@ writer = tf.summary.FileWriter(logdir.format(args.model,args.learning_rate,args.
 train_error_summary = tf.summary.scalar(name='Train_Error',tensor=model.loss_batch)
 #valid_accuracy_summary = tf.summary.scalar(name='Accuracy',tensor=model.accuracy)
 
+valid_accuracy_summaries = []
+for i in range(args.min_t,args.max_t):
+    valid_accuracy_summaries.append(tf.summary.scalar(name='Accuracy_t={0}'.format(i),tensor=model.accuracy))
+
 
 for step in range(n_steps):
     tx,ty,m = data.next_batch()
@@ -120,9 +126,11 @@ for step in range(n_steps):
     writer.add_summary(summ,step)
 
     if step % args.validate_freq == 0:
-        #writer.add_summary(esumm,step)
-        #writer.add_summary(asumm,step)
-        print('step {0} :: {1}'.format(step,e))
+        for t in range(args.min_t,args.max_t):
+            vx,vy,m = data.validate(t)
+            acc,summ = sess.run([model.accuracy,valid_accuracy_summaries[t-args.min_t]],{model.X:vx,model.Y:vy})
+            writer.add_summary(summ,step)
+        print('step {0} :: {1}, acc {2}'.format(step,round(e,4),round(acc,4),acc))
 
 
 

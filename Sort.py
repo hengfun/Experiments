@@ -24,6 +24,20 @@ class SortingDataWrapper(object):
             self.clock = self.min_T
         return np.array(data), np.array(targets), np.array(masks)
 
+    def validate(self,T):
+        data = []
+        targets = []
+        masks = []
+        for i in range(self.batch_size):
+            x,y,m = self.generate(T)
+            data.append(x)
+            targets.append(y)
+            masks.append(m)
+        self.clock += 1
+        if self.clock > self.max_T:
+            self.clock = self.min_T
+        return np.array(data), np.array(targets), np.array(masks)
+
     def generate(self,T):
         X = np.zeros((T*2, 2))
         X[T-1,0] = 1.0
