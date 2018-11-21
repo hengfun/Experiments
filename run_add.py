@@ -31,7 +31,7 @@ parser.add_argument('--layers', type=int, default=1,
                  help='layers')
 parser.add_argument('--hidden', type=int, default=100,
                  help='hidden')
-parser.add_argument('--batch_size', type=int, default=500,
+parser.add_argument('--batch_size', type=int, default=50,
                  help='batch_size')
 
 args = parser.parse_args()
@@ -77,7 +77,6 @@ class Model(object):
         self.y = tf.placeholder(dtype=self.dtype, shape=[None,self.num_classes])
         self.lr = tf.placeholder(dtype=self.dtype, name="learning_rate")
 
-
         self.initial_state = self.cell.zero_state(batch_size=batch_size, dtype=self.dtype)
 
         output, last_state = tf.nn.dynamic_rnn(inputs=self.x, cell=self.cell, dtype=self.dtype)
@@ -88,25 +87,21 @@ class Model(object):
         self.predict = tf.layers.dense(output_flatten,units=self.num_classes)
         self.loss = tf.losses.mean_squared_error(self.y,self.predict)
 
-
-    #
-    #     self.labels = tf.slice(self.yo, [0, max_steps - 10, 0], [-1, -1, -1])
-    #     self.labels_predict = tf.argmax(self.labels,axis=1)
-    #
-    #     self.all_acc = tf.reduce_mean(tf.cast(tf.math.equal(self.labels_predict,self.predictions),tf.float32),axis=1)
-    #     self.batch_acc = tf.reduce_mean(self.all_acc)
-    #
-    #     self.cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.labels,logits=self.logits_predict)
-    #
-    #     self.loss = tf.reduce_mean(tf.reduce_mean(self.cross_entropy_loss,axis=1),axis=0)
         self.optimizer = tf.train.AdamOptimizer(self.lr)
         self.grads_vars = self.optimizer.compute_gradients(self.loss)
         self.train_op = self.optimizer.apply_gradients(self.grads_vars,
                                                            global_step=self.global_step)
+        self.t_error=tf.summary.scalar(name='Train_Error',tensor=self.loss)
+
+        self.v_error = tf.summary.scalar(name='Validation_Error', tensor=self.loss)
+
     def step(self,sess,feed_dict):
         return sess.run([self.train_op,self.loss,self.global_step],feed_dict)
 
-gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.2)
+    def check(self,sess,feed_dict):
+        return sess.run([self.y,self.v_error],feed_dict)
+
+gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.1)
 lr = args.learning_rate
 seeds = 10
 t_start = 10

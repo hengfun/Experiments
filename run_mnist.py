@@ -9,7 +9,7 @@ from Mnist import MnistWrapper
 n_steps = 10000
 
 
-logdir = './logs/mnist/{0}_{1}_{2}_clip{3}'
+logdir = './logs/mnist/{0}_{1}_{2}_clip{3}_hidden{4}'
 
 
 class Config(object):
@@ -17,20 +17,20 @@ class Config(object):
         self.learning_rate = 1e-3
         self.seed = 1
         self.optimizer = 'adam'
-        self.hidden_units = 100
+        self.hidden_units = 512
         self.dtype = 'float32'
         self.model = 'lstm'
         self.validate_freq = 200
         self.batch_size = 50
-        self.clip_grad_norm = False
+        self.clip_grad_norm = True
         if self.clip_grad_norm:
-            self.max_norm_grad = 5.0
+            self.max_norm_grad = 2.0
         else:
             self.max_norm_grad = None
 
 
 # gpu = args.gpu
-gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.2)
+gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.4)
 
 
 
@@ -117,7 +117,7 @@ print('begin training for {0} steps'.format(n_steps))
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.initializers.global_variables())
 
-writer = tf.summary.FileWriter(logdir.format(args.model,args.learning_rate,args.seed,args.max_norm_grad), sess.graph)
+writer = tf.summary.FileWriter(logdir.format(args.model,args.learning_rate,args.seed,args.max_norm_grad,args.hidden_units), sess.graph)
 train_error_summary = tf.summary.scalar(name='Train_Error',tensor=model.loss_batch)
 train_accuracy_summary = tf.summary.scalar(name='train_Accuracy',tensor=model.accuracy)
 valid_error_summary = tf.summary.scalar(name='Validation_Error',tensor=model.loss_batch)
@@ -132,9 +132,10 @@ for step in range(n_steps):
 
     if step % args.validate_freq == 0:
         vx, vy = data.validate()
-        ve, vacc, esumm,asumm = sess.run([model.loss_batch,model.accuracy,valid_error_summary,valid_accuracy_summary],{model.X:vx,model.Y:vy})
-        writer.add_summary(esumm,step)
-        writer.add_summary(asumm,step)
+        for i in range(30):
+            ve, vacc, esumm,asumm = sess.run([model.loss_batch,model.accuracy,valid_error_summary,valid_accuracy_summary],{model.X:vx[i*vx.shape[0]//30:(i+1)*vx.shape[0]//30],model.Y:vy[i*vx.shape[0]//30:(i+1)*vx.shape[0]//30]})
+            writer.add_summary(esumm,step)
+            writer.add_summary(asumm,step)
         print('step {0} | e {1} a {2} | e {3} a {4}'.format(step,round(e,4),round(a,3),round(ve,4),round(vacc,3)))
 
 

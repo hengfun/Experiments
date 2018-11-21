@@ -1,17 +1,18 @@
 import tensorflow as tf
 import argparse
+import os
 from Copy import *
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', type=str, default='lstm',
-                 help='gru, gers, or lstm')
+                 help='gru, or lstm')
 parser.add_argument('--epochs', type=int, default=100000,
                  help='# of Epochs, default 100k')
 parser.add_argument('--seed', type=int, default=0,
                  help='default seed 0')
 parser.add_argument('--num_seeds', type=int, default=10,
                  help='trains total number of seeds')
-parser.add_argument('--learning_rate', type=float, default=10e-5 ,
+parser.add_argument('--learning_rate', type=float, default=10e-3 ,
                  help='learning rate, default 10e-5')
 parser.add_argument('--optimizer', type=str, default='adam',
                  help='adam, or momentum')
@@ -31,7 +32,7 @@ parser.add_argument('--layers', type=int, default=1,
                  help='layers')
 parser.add_argument('--hidden', type=int, default=100,
                  help='hidden')
-parser.add_argument('--batch_size', type=int, default=5000,
+parser.add_argument('--batch_size', type=int, default=1000,
                  help='batch_size')
 
 args = parser.parse_args()
@@ -62,7 +63,6 @@ class Model(object):
                 self.cell = tf.contrib.rnn.LSTMCell(num_units=self.hidden, dtype=self.dtype)
             else:
                 self.cell = tf.contrib.rnn.GRUCell(num_units=self.hidden, dtype=self.dtype)
-
         else:
             if args.model == 'lstm':
                 self.cell = tf.contrib.rnn.MultiRNNCell([tf.contrib.rnn.LSTMCell(num_units=self.hidden, dtype=self.dtype)
@@ -141,9 +141,10 @@ c = CopyTask(batch_size,t_start,t_end)
 # feed_dict = {model.x: xb, model.y: yb, model.lr:lr}
 
 
+
 seeds = 10
-t_start = 10
-t_end = 20
+t_start = 50
+t_end = 70
 c = CopyTask(batch_size,t_start,t_end)
 xb, yb = c.next_batch()
 for seed in range(seeds):
@@ -152,17 +153,21 @@ for seed in range(seeds):
     tf.set_random_seed(seed)
 
     model = Model(args)
-    logdir = './logs/copy/{0}_{1}_{2}'
+    logdir = './logs/copy/{0}_{1}_{2}_ts{3}_te{4}'
+    modeldir = './models/copy/{0}_{1}_{2}_ts{3}_te{4}'
 
     sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
     init = tf.global_variables_initializer()
 
-    writer = tf.summary.FileWriter(logdir.format(args.model, args.learning_rate, seed),
+    writer = tf.summary.FileWriter(logdir.format(args.model, args.learning_rate, seed,t_start,t_end),
                                    sess.graph)
 
     sess.run(init)
+    saver = tf.train.Saver()
     print('Setting seed....')
-    for e in range(args.epochs):
+    Solved =False
+    e = 0
+    while not Solved and e<=args.epochs:
 
         feed_dict = {model.x: xb, model.y: yb, model.lr:lr}
         _, e_loss,step,e_acc,esumm,asumm=model.step(sess,feed_dict)
@@ -174,10 +179,19 @@ for seed in range(seeds):
             y_act,y_pred,esumm,asumm = model.check(sess,feed_dict)
             writer.add_summary(esumm, step)
             writer.add_summary(asumm, step)
+            directory = modeldir.format(args.model,args.learning_rate,seed,t_start,t_end)
+            if not os.path.isdir(directory):
+                os.makedirs(directory)
+            saver.save(sess, directory, global_step=step)
             print('act:{}'.format(y_act[0]))
             print('pred:{}'.format(y_pred[0]))
-            print('Epoch:{} Loss:{:1.3f}, Acc:{:1.3f}'.format(e,e_loss,e_acc))
-
+            print('Epoch:{} Loss:{:1.7f}, Acc:{:1.7f}'.format(e,e_loss,e_acc))
+            # e_acc = 1.0
+        if round(float(e_acc),5)==float(1.0):
+            # saver.save(sess, directory, global_step=step)
+            print('Solved: Epoch:{} Loss:{:1.5f}, Acc:{:1.7f}'.format(e, e_loss, e_acc))
+            Solved=True
+        e+=1
 
 
     sess.close()
