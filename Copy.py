@@ -5,16 +5,18 @@ Copy memory problem
 """
 
 class CopyTask(object):
-    def __init__(self, n, t_start, t_end):
+    def __init__(self, n, t_start, t_end,seed):
         self.t_start = t_start
         self.t_end = t_end
         self.n = n
+        self.rng = np.random.RandomState(seed)
         self.generate_data(n,t_start,t_end)
         self.counter = t_start - 1
 
     def single_copy(self, t):
         # generate a single copy
-        head = np.random.randint(0, 8, 10)  # The first ten values are randomly generated from integers 0 to 7
+
+        head = self.rng.randint(0, 8, 10)  # The first ten values are randomly generated from integers 0 to 7
         middle = np.array([8] * (t - 1))  # next T-1 values are all 8
         tail = np.array([9] * 11)  # the last 11 values are all 9
         x = np.concatenate([head, middle, tail], axis=0)

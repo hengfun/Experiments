@@ -47,13 +47,13 @@ class MNISTModel(object):
             self.dtype = tf.float32
         
         if args.model == 'lstm':
-            # self.cell = LSTMCell(num_units=self.hidden_units)
-            self.cell = tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell(num_units=self.hidden_units)
+            self.cell = LSTMCell(num_units=self.hidden_units)
+            # self.cell = tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell(num_units=self.hidden_units)
             # self.cell = tf.contrib.cudnn_rnn.CudnnLSTM(num_layers=1,num_units=self.hidden_units)
         elif args.model == 'gru':
 
-            self.cell = tf.contrib.cudnn_rnn.CudnnCompatibleGRUCell(num_units=self.hidden_units)
-            #self.cell = tf.nn.rnn_cell.GRUCell(num_units=self.hidden_units,kernel_initializer=tf.orthogonal_initializer())
+            # self.cell = tf.contrib.cudnn_rnn.CudnnCompatibleGRUCell(num_units=self.hidden_units)
+            self.cell = tf.nn.rnn_cell.GRUCell(num_units=self.hidden_units,kernel_initializer=tf.orthogonal_initializer())
             # self.cell = GRUCell(num_units=self.hidden_units)
         
         self.X = tf.placeholder(dtype=self.dtype,shape=[None,28*28,1])

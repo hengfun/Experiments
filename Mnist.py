@@ -15,8 +15,10 @@ class MnistWrapper(object):
         
         self.valid_data = data[:int(data.shape[0]*validation)]
         self.valid_targets = targets[:int(data.shape[0]*validation)]
-        self.train_data = data[int(data.shape[0]*validation):]
-        self.train_targets = targets[int(data.shape[0]*validation):]
+        self.test_data = data[int(data.shape[0]*validation):int(data.shape[0]*validation)*2]
+        self.test_targets = targets[int(data.shape[0] * validation):int(data.shape[0] * validation) * 2]
+        self.train_data = data[int(data.shape[0]*validation)*2:]
+        self.train_targets = targets[int(data.shape[0]*validation)*2:]
 
         
         self.train_size = self.train_data.shape[0]
@@ -30,6 +32,9 @@ class MnistWrapper(object):
     
     def validate(self):
         return self.valid_data, self.valid_targets
+
+    def test(self):
+        return self.test_data, self.test_targets
 
 def get_mnist(shuffle=False,seed=None,dire='mnist'):
     if not os.path.isdir(dire):

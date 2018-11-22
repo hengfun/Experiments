@@ -116,7 +116,7 @@ train_error_summary = tf.summary.scalar(name='Train_Error',tensor=model.loss_bat
 #valid_accuracy_summary = tf.summary.scalar(name='Accuracy',tensor=model.accuracy)
 
 valid_accuracy_summaries = []
-for i in range(args.min_t,args.max_t):
+for i in range(args.min_t,args.max_t+1):
     valid_accuracy_summaries.append(tf.summary.scalar(name='Accuracy_t={0}'.format(i),tensor=model.accuracy))
 
 
@@ -126,7 +126,7 @@ for step in range(n_steps):
     writer.add_summary(summ,step)
 
     if step % args.validate_freq == 0:
-        for t in range(args.min_t,args.max_t):
+        for t in range(args.min_t,args.max_t+1):
             vx,vy,m = data.validate(t)
             acc,summ = sess.run([model.accuracy,valid_accuracy_summaries[t-args.min_t]],{model.X:vx,model.Y:vy})
             writer.add_summary(summ,step)

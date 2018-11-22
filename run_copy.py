@@ -8,42 +8,36 @@ parser.add_argument('--model', type=str, default='lstm',
                  help='gru, or lstm')
 parser.add_argument('--epochs', type=int, default=100000,
                  help='# of Epochs, default 100k')
-parser.add_argument('--seed', type=int, default=0,
-                 help='default seed 0')
-parser.add_argument('--num_seeds', type=int, default=10,
+parser.add_argument('--seeds', type=int, default=5,
                  help='trains total number of seeds')
-parser.add_argument('--learning_rate', type=float, default=10e-3 ,
+parser.add_argument('--lr', type=float, default=1e-4 ,
                  help='learning rate, default 10e-5')
 parser.add_argument('--optimizer', type=str, default='adam',
-                 help='adam, or momentum')
-parser.add_argument('--data', type=str, default='nmsd',
-                 help='nmsd, or msd')
-parser.add_argument('--interval', type=int, default=999,
-                 help='train specific batch')
-parser.add_argument('--no_peep', action="store_false", default=True,
-                    help='train with peephole')
-parser.add_argument('--gpu', action="store_true", default=False,
-                    help='use gpu over cpu')
+                 help='adam, or rmsprop')
+parser.add_argument('--validate_freq', type=int, default=200,
+                    help='validation freq')
 parser.add_argument('--dtype', type=int, default=32,
                  help='specify dtype')
-parser.add_argument('--cycles', type=int, default=4,
-                 help='num of cycles for MSD task')
 parser.add_argument('--layers', type=int, default=1,
                  help='layers')
 parser.add_argument('--hidden', type=int, default=100,
                  help='hidden')
-parser.add_argument('--batch_size', type=int, default=1000,
+parser.add_argument('--batch_size', type=int, default=400,
                  help='batch_size')
+parser.add_argument('--gpu', type=float, default=.02,
+                 help='gpu memory')
+parser.add_argument('--t_start', type=int, default=50,
+                 help='t start')
+parser.add_argument('--t_end', type=int, default=60,
+                 help='t end')
 
 args = parser.parse_args()
-
 batch_size = args.batch_size
 
 
 class Model(object):
     def __init__(self, args):
-        self.rate = args.learning_rate
-        self.seed = args.seed
+        self.rate = args.lr
         self.optim = args.optimizer
         self.epochs = args.epochs
         self.hidden = args.hidden
@@ -60,15 +54,17 @@ class Model(object):
 
         if self.layers ==1:
             if args.model == 'lstm':
-                self.cell = tf.contrib.rnn.LSTMCell(num_units=self.hidden, dtype=self.dtype)
+                self.cell = tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell(num_units=self.hidden)
+                # self.cell = tf.contrib.rnn.LSTMCell(num_units=self.hidden, dtype=self.dtype)
             else:
-                self.cell = tf.contrib.rnn.GRUCell(num_units=self.hidden, dtype=self.dtype)
+                self.cell = tf.contrib.cudnn_rnn.CudnnCompatibleGRUCell(num_units=self.hidden)
+                # self.cell = tf.contrib.rnn.GRUCell(num_units=self.hidden, dtype=self.dtype)
         else:
             if args.model == 'lstm':
-                self.cell = tf.contrib.rnn.MultiRNNCell([tf.contrib.rnn.LSTMCell(num_units=self.hidden, dtype=self.dtype)
+                self.cell = tf.contrib.rnn.MultiRNNCell([tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell(num_units=self.hidden)
                                                          for _ in range(self.layers)])
             else:
-                self.cell = tf.contrib.rnn.MultiRNNCell([tf.contrib.rnn.GRUCell(num_units=self.hidden, dtype=self.dtype)
+                self.cell = tf.contrib.rnn.MultiRNNCell([tf.contrib.cudnn_rnn.CudnnCompatibleGRUCell(num_units=self.hidden)
                                                          for _ in range(self.layers)])
         self.x = tf.placeholder(dtype=tf.int32, shape=[None, None])
         batch_size = tf.shape(self.x)[0]
@@ -98,13 +94,12 @@ class Model(object):
         self.labels = tf.slice(self.y, [0, max_steps - 10], [-1, -1])
         self.labels_predict = tf.slice(self.yo,[0,max_steps - 10,0],[-1,-1,-1])
 
-
         self.all_acc = tf.reduce_mean(tf.cast(tf.math.equal(self.labels,self.predictions),tf.float32),axis=1)
         self.batch_acc = tf.reduce_mean(self.all_acc)
 
         self.cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.labels_predict,logits=self.logits_predict)
         self.loss = tf.reduce_mean(tf.reduce_mean(self.cross_entropy_loss,axis=1),axis=0)
-        self.optimizer = tf.train.AdamOptimizer(self.lr)
+        self.optimizer = tf.train.AdamOptimizer(self.rate)
         self.grads_vars = self.optimizer.compute_gradients(self.loss)
         self.train_op = self.optimizer.apply_gradients(self.grads_vars,global_step=self.global_step)
                  
@@ -113,85 +108,107 @@ class Model(object):
         self.t_acc = tf.summary.scalar(name='Train_Accuracy',tensor=self.batch_acc)
 
         self.v_error = tf.summary.scalar(name='Validation_Error', tensor=self.loss)
-        self.v_acc = tf.summary.scalar(name='Validation_Accuracy', tensor=self.batch_acc)
-                 
-                 
+        # self.v_acc = tf.summary.scalar(name='Validation_Accuracy', tensor=self.batch_acc)
+        self.valid_accuracy_summaries = []
+        for i in range(args.t_start, args.t_end+1):
+            self.valid_accuracy_summaries.append(tf.summary.scalar(name='Validation_Accuracy_t={0}'.format(i), tensor=self.batch_acc))
+        self.valid_loss_summaries = []
+        # for i in range(args.t_start, args.t_end+1):
+        #     self.valid_loss_summaries.append(tf.summary.scalar(name='Validation_Accuracy_t={0}'.format(i), tensor=self.loss))
+
 
     def step(self,sess,feed_dict):
         return sess.run([self.train_op,self.loss,self.global_step,self.batch_acc,self.t_error,self.t_acc],feed_dict)
 
     def check(self,sess,feed_dict):
-        return sess.run([self.labels,self.predictions,self.v_error,self.v_acc],feed_dict)
+        return sess.run([self.loss,self.batch_acc,self.labels,self.predictions],feed_dict)
 
 
+c = CopyTask(batch_size,args.t_start,args.t_end,seed=0)
 
-gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.2)
-tf.ConfigProto(gpu_options=gpu_options)
-
-# device = '/cpu:0'
-t_start = 10
-t_end = 20
-lr = args.learning_rate
-c = CopyTask(batch_size,t_start,t_end)
-# model = Model(args)
-# sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
-# init = tf.global_variables_initializer()
-# sess.run(init)
-#
-# feed_dict = {model.x: xb, model.y: yb, model.lr:lr}
-
-
-
-seeds = 10
-t_start = 50
-t_end = 70
-c = CopyTask(batch_size,t_start,t_end)
-xb, yb = c.next_batch()
-for seed in range(seeds):
+for seed in range(args.seeds):
     # set seed
     tf.reset_default_graph()
     tf.set_random_seed(seed)
 
     model = Model(args)
     logdir = './logs/copy/{0}_{1}_{2}_ts{3}_te{4}'
-    modeldir = './models/copy/{0}_{1}_{2}_ts{3}_te{4}'
 
-    sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+    sess = tf.Session(config=tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu)))
     init = tf.global_variables_initializer()
-
-    writer = tf.summary.FileWriter(logdir.format(args.model, args.learning_rate, seed,t_start,t_end),
+    writer = tf.summary.FileWriter(logdir.format(args.model, args.lr, seed, args.t_start, args.t_end),
                                    sess.graph)
-
     sess.run(init)
-    saver = tf.train.Saver()
+    # saver = tf.train.Saver()
     print('Setting seed....')
-    Solved =False
-    e = 0
-    while not Solved and e<=args.epochs:
 
-        feed_dict = {model.x: xb, model.y: yb, model.lr:lr}
+    Solved =False
+    step = 0
+
+    hist_loss = []
+    patience = 20
+    min_delta = 0.001
+    patience_cnt = 0
+    early_stop=False
+
+    while not Solved and step<=args.epochs and not early_stop:
+        xb, yb = c.next_batch()
+        feed_dict = {model.x: xb, model.y: yb}
         _, e_loss,step,e_acc,esumm,asumm=model.step(sess,feed_dict)
         writer.add_summary(esumm, step)
         writer.add_summary(asumm, step)
-        xb, yb = c.next_batch()
+
         #next batch
-        if e%200==0:
-            y_act,y_pred,esumm,asumm = model.check(sess,feed_dict)
-            writer.add_summary(esumm, step)
-            writer.add_summary(asumm, step)
-            directory = modeldir.format(args.model,args.learning_rate,seed,t_start,t_end)
-            if not os.path.isdir(directory):
-                os.makedirs(directory)
-            saver.save(sess, directory, global_step=step)
-            print('act:{}'.format(y_act[0]))
-            print('pred:{}'.format(y_pred[0]))
-            print('Epoch:{} Loss:{:1.7f}, Acc:{:1.7f}'.format(e,e_loss,e_acc))
-            # e_acc = 1.0
-        if round(float(e_acc),5)==float(1.0):
-            # saver.save(sess, directory, global_step=step)
-            print('Solved: Epoch:{} Loss:{:1.5f}, Acc:{:1.7f}'.format(e, e_loss, e_acc))
-            Solved=True
-        e+=1
+        if step%args.validate_freq==0:
+            acc = 0
+            t_loss = 0
+            for t in range(args.t_start,args.t_end+1):
+                xb, yb = c.next_batch()
+                feed_dict = {model.x: xb, model.y: yb}
+                summ = sess.run(model.valid_accuracy_summaries[t - args.t_start],
+                                     {model.x: xb, model.y: yb})
+                writer.add_summary(summ, step)
+
+                e_loss,e_acc,y_act,y_pred = model.check(sess,feed_dict)
+
+                # directory = modeldir.format(args.model,args.learning_rate,seed,t_start,t_end)
+                # if not os.path.isdir(directory):
+                #     os.makedirs(directory)
+                # saver.save(sess, directory, global_step=step)
+                acc+=e_acc/(args.t_end-args.t_start+1)
+                t_loss+=e_loss/(args.t_end-args.t_start+1)
+
+                if t==args.t_end:
+                    print('act:{}'.format(y_act[0]))
+                    print('pred:{}'.format(y_pred[0]))
+                    print('Epoch:{} Loss:{:1.7f}, Acc:{:1.7f}, ACC{:1.7f}'.format(step,e_loss,e_acc,acc))
+            print(round(float(acc),3),float(1))
+            if round(float(acc),3)==float(1):
+                # saver.save(sess, directory, global_step=step)
+                print('Solved: Epoch:{} Loss:{:1.5f}, Acc:{:1.7f}'.format(step, e_loss, e_acc))
+                Solved=True
+            hist_loss.append(acc/(args.t_end-args.t_start+1))
+            if step>50000:
+                if hist_loss[-2] - hist_loss[-1] > min_delta:
+                    patience_cnt = 0
+                else:
+                    patience_cnt +=1
+                if patience_cnt>patience:
+                    print('Early stopping')
+                    early_stop=True
+
+
+
+        step+=1
+
+    # for t in range(args.t_start, args.t_end + 1):
+    #     xb, yb = c.next_batch()
+    #     feed_dict = {model.x: xb, model.y: yb}
+    #     summ = sess.run(model.valid_accuracy_summaries[t - args.t_start],
+    #                     {model.x: xb, model.y: yb})
+    #     writer.add_summary(summ, step)
+    #
+    #     e_loss, e_acc, y_act, y_pred = model.check(sess, feed_dict)
 
 
     sess.close()
