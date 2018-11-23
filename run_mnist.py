@@ -1,13 +1,13 @@
 
 import numpy as np 
 import tensorflow as tf 
-from rnn import LSTMCell
+from rnn import LSTMCell, GRUCell
 from Mnist import MnistWrapper
 from tensorflow.examples.tutorials.mnist import input_data
 
 
 
-logdir = './logs/mnist/{0}_{1}_{2}_clip{3}_hidden{4}'
+logdir = './logs/mnist/{0}hard_{1}_{2}_clip{3}_hidden_{4}'
 
 
 class Config(object):
@@ -23,7 +23,7 @@ class Config(object):
         self.model = 'gru'
         self.validate_freq = 10
         self.batch_size = 50
-        self.clip_grad_norm = True
+        self.clip_grad_norm = False
         if self.clip_grad_norm:
             self.max_norm_grad = 1.0
         else:
@@ -53,8 +53,8 @@ class MNISTModel(object):
         elif args.model == 'gru':
 
             # self.cell = tf.contrib.cudnn_rnn.CudnnCompatibleGRUCell(num_units=self.hidden_units)
-            self.cell = tf.nn.rnn_cell.GRUCell(num_units=self.hidden_units,kernel_initializer=tf.orthogonal_initializer())
-            # self.cell = GRUCell(num_units=self.hidden_units)
+            # self.cell = tf.nn.rnn_cell.GRUCell(num_units=self.hidden_units,kernel_initializer=tf.orthogonal_initializer())
+            self.cell = GRUCell(num_units=self.hidden_units)
         
         self.X = tf.placeholder(dtype=self.dtype,shape=[None,28*28,1])
         self.batch_size = tf.shape(self.X)[0]
@@ -103,6 +103,7 @@ class MNISTModel(object):
             # self.optim = tf.train.RMSPropOptimizer(args.learning_rate)
         else:
            self.optim = tf.train.MomentumOptimizer(args.learning_rate,momentum=.99)
+
         self.grads_vars =self.optim.compute_gradients(self.loss)
         if args.clip_grad_norm:
             grads, variables = zip(*self.grads_vars)
@@ -163,7 +164,7 @@ for seed in range(args.seeds):
     for step in range(args.n_steps):
         tx,ty = data.next_batch()
         #tx, ty = mnist.train.next_batch(args.batch_size)
-        _, e,a, summ,asumm = sess.run([model.train_step,model.loss_batch,model.accuracy,train_error_summary,train_accuracy_summary],{model.X:tx,model.Y:ty})
+        _, e,a, summ,asumm = sess.run([model.train_op,model.loss_batch,model.accuracy,train_error_summary,train_accuracy_summary],{model.X:tx,model.Y:ty})
         writer.add_summary(summ,step)
         writer.add_summary(asumm,step)
 

@@ -10,7 +10,7 @@ parser.add_argument('--epochs', type=int, default=100000,
                  help='# of Epochs, default 100k')
 parser.add_argument('--seeds', type=int, default=5,
                  help='trains total number of seeds')
-parser.add_argument('--lr', type=float, default=1e-4 ,
+parser.add_argument('--lr', type=float, default=1e-3 ,
                  help='learning rate, default 10e-5')
 parser.add_argument('--optimizer', type=str, default='adam',
                  help='adam, or rmsprop')
@@ -24,12 +24,13 @@ parser.add_argument('--hidden', type=int, default=100,
                  help='hidden')
 parser.add_argument('--batch_size', type=int, default=400,
                  help='batch_size')
-parser.add_argument('--gpu', type=float, default=.02,
+parser.add_argument('--gpu', type=float, default=.04,
                  help='gpu memory')
-parser.add_argument('--t_start', type=int, default=50,
+parser.add_argument('--t_start', type=int, default=100,
                  help='t start')
-parser.add_argument('--t_end', type=int, default=60,
+parser.add_argument('--t_end', type=int, default=100,
                  help='t end')
+
 
 args = parser.parse_args()
 batch_size = args.batch_size
@@ -44,6 +45,8 @@ class Model(object):
         self.layers = args.layers
         self.num_classes = 10
         self.batch_size = args.batch_size
+        self.clip_grad_norm =True
+        self.max_norm_gradient = 1.0
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
 
         if args.dtype == 32:
@@ -99,9 +102,19 @@ class Model(object):
 
         self.cross_entropy_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.labels_predict,logits=self.logits_predict)
         self.loss = tf.reduce_mean(tf.reduce_mean(self.cross_entropy_loss,axis=1),axis=0)
-        self.optimizer = tf.train.AdamOptimizer(self.rate)
-        self.grads_vars = self.optimizer.compute_gradients(self.loss)
-        self.train_op = self.optimizer.apply_gradients(self.grads_vars,global_step=self.global_step)
+        self.optim = tf.train.AdamOptimizer(self.rate)
+
+        self.grads_vars = self.optim.compute_gradients(self.loss)
+        if self.clip_grad_norm:
+            grads, variables = zip(*self.grads_vars)
+            grads_clipped, _ = tf.clip_by_global_norm(grads, clip_norm=self.max_norm_gradient)
+            self.train_op = self.optim.apply_gradients(zip(grads_clipped, variables),global_step=self.global_step)
+        else:
+            self.train_op = self.optim.apply_gradients(self.grads_vars,global_step=self.global_step)
+
+
+        # self.grads_vars = self.optimizer.compute_gradients(self.loss)
+        # self.train_op = self.optimizer.apply_gradients(self.grads_vars,global_step=self.global_step)
                  
         ## summaries
         self.t_error=tf.summary.scalar(name='Train_Error',tensor=self.loss)
@@ -132,7 +145,7 @@ for seed in range(args.seeds):
     tf.set_random_seed(seed)
 
     model = Model(args)
-    logdir = './logs/copy/{0}_{1}_{2}_ts{3}_te{4}'
+    logdir = './logs/copy_replicate/{0}_{1}_{2}_ts{3}_te{4}'
 
     sess = tf.Session(config=tf.ConfigProto(gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu)))
     init = tf.global_variables_initializer()
@@ -146,8 +159,8 @@ for seed in range(args.seeds):
     step = 0
 
     hist_loss = []
-    patience = 20
-    min_delta = 0.001
+    patience = 100
+    min_delta = 0.0001
     patience_cnt = 0
     early_stop=False
 
@@ -200,7 +213,9 @@ for seed in range(args.seeds):
 
 
         step+=1
-
+    # folder = logdir.format(args.model, args.lr, seed, args.t_start, args.t_end)
+    # filename = 'Final_test.txt'
+    # file = open(os.path.join(folder,filename))
     # for t in range(args.t_start, args.t_end + 1):
     #     xb, yb = c.next_batch()
     #     feed_dict = {model.x: xb, model.y: yb}
