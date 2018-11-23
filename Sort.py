@@ -1,4 +1,4 @@
-import numpy as np 
+import numpy as np
 
 
 
@@ -39,17 +39,17 @@ class SortingDataWrapper(object):
         return np.array(data), np.array(targets), np.array(masks)
 
     def generate(self,T):
-        X = np.zeros((T*2, 2))
+        X = np.zeros((T*2, 2),dtype=np.float32)
         X[T-1,0] = 1.0
-        x = self.rng.uniform(-1,1,(T))
+        x = self.rng.uniform(-1,1,(T)).astype(np.float32)
         X[:T,1] = x
         y = np.argsort(x)
-        Y = np.zeros(T*2)
+        Y = np.zeros(T*2,np.int64)
         Y[T:] = y
         M = np.zeros((T*2))
         M[T:] = 1.0
-        return X, Y, M 
- 
+        return X, Y, M
+
 class __SortingDataWrapper(object):
     def __init__(self,batch_size,num_elements,min_T,max_T,seed=1):
         self.rng = np.random.RandomState(seed)
@@ -74,11 +74,11 @@ class __SortingDataWrapper(object):
         idx = np.arange(T)
         x = self.rng.uniform(0,1,(T,num_elem))
         self.rng.shuffle(idx)
-        x[:,0] = idx 
+        x[:,0] = idx
         y = x[:,1:]
         #y = y[idx]
         tmp = x[:,1:]
         x[:,1:] = tmp[:,idx]
         return x, y
-    
+
 

@@ -1,6 +1,6 @@
 
-import numpy as np 
-import tensorflow as tf 
+import numpy as np
+import tensorflow as tf
 
 from Sort import SortingDataWrapper
 
@@ -40,19 +40,19 @@ class SortModel(object):
         self.max_T = args.max_t
 
         self.hidden_units = args.hidden_units
-        
+
         self.num_classes = 10
         if args.dtype == tf.float64:
             self.dtype = tf.float64
         else:
             self.dtype = tf.float32
-        
+
         if args.model == 'lstm':
             self.cell = tf.contrib.rnn.LSTMCell(num_units=self.hidden_units)
             # self.cell = tf.contrib.cudnn_rnn.CudnnLSTM(num_layers=1,num_units=self.hidden_units)
         elif args.model == 'gru':
             self.cell = tf.contrib.rnn.GRUCell(num_units=self.hidden_units)
-        
+
         self.X = tf.placeholder(dtype=self.dtype,shape=[None,None,2])
         self.batch_size = tf.shape(self.X)[0]
         self.sequence_length = tf.shape(self.X)[1]
@@ -64,7 +64,7 @@ class SortModel(object):
         self.Y_onehot = tf.one_hot(self.Y,self.max_T)
 
         self.initial_state = self.cell.zero_state(batch_size=self.batch_size,dtype=self.dtype)
-        
+
         self.output, last_state = tf.nn.dynamic_rnn(inputs=self.X,cell=self.cell,dtype=self.dtype)
 
         self.output_flat = tf.reshape(self.output, [-1,self.hidden_units])
